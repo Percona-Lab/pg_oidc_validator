@@ -1,0 +1,33 @@
+name: Cross-Platform CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: configure
+        run: cmake --preset examples
+
+      - name: build
+        run: cmake --build --preset examples
+
+      - name: test
+        run: |
+          cmake --build --preset examples --target rsa-create-run
+          cmake --build --preset examples --target rsa-verify-run
+
+      - if: github.event_name == 'push' && always()
+        uses: ./.github/actions/badge
+        with:
+          category: cross-platform
+          label: ${{ matrix.os }}

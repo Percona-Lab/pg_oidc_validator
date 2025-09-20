@@ -1,0 +1,103 @@
+name: PGDG
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  pgxs-build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          pkg-config \
+          libjwt-dev \
+          libcurl4-openssl-dev \
+          libssl-dev \
+          libreadline-dev \
+          libkrb5-dev \
+          zlib1g-dev \
+          libxml2-dev \
+          libxslt1-dev \
+          uuid-dev \
+          flex \
+          bison
+
+    - name: Install PG Distribution Postgresql 18
+      run: |
+        sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt \
+          $(lsb_release -cs)-pgdg main 18" > /etc/apt/sources.list.d/pgdg.list'
+        sudo wget --quiet -O - \
+          https://www.postgresql.org/media/keys/ACCC4CF8.asc |
+          sudo apt-key add -
+        sudo apt update
+        sudo apt -y install postgresql-18 postgresql-server-dev-18
+
+    - name: Checkout pg_oidc_validator extension
+      uses: actions/checkout@v4
+
+    - name: Build pg_oidc_validator with PGDG
+      run: |
+        make -j USE_PGXS=1
+        sudo make USE_PGXS=1 install
+
+
+    - name: Create release directory
+      run: |
+        sudo mkdir pg-oidc-validator-pgdg18
+        sudo mkdir -p pg-oidc-validator-pgdg18/usr/lib/postgresql/18/lib/
+        sudo mkdir -p pg-oidc-validator-pgdg18/share/postgresql/18/extension/
+        sudo cp /usr/share/postgresql/18/extension/pg_oidc_validator* pg-oidc-validator-pgdg18/share/postgresql/18/extension/
+        sudo cp /usr/lib/postgresql/18/lib/pg_oidc_validator* pg-oidc-validator-pgdg18/usr/lib/postgresql/18/lib/
+
+    - name: Upload tgz
+      uses: actions/upload-artifact@v4
+      with:
+        name: pg-oidc-validator-pgdg18-binary
+        path: pg-oidc-validator-pgdg18
+
+    - name: Create deb
+      run: |
+        sudo mkdir pg-oidc-validator-pgdg18/DEBIAN
+        sudo sh -c 'echo "Package: pg-oidc-validator-pgdg18" > pg-oidc-validator-pgdg18/DEBIAN/control'
+        sudo sh -c 'echo "Version: 0.1" >> pg-oidc-validator-pgdg18/DEBIAN/control'
+        sudo sh -c 'echo "Architecture: amd64" >> pg-oidc-validator-pgdg18/DEBIAN/control'
+        sudo sh -c 'echo "Maintainer: Percona" >> pg-oidc-validator-pgdg18/DEBIAN/control'
+        sudo sh -c 'echo "Description: Experimental pg-oidc-validator extension" >> pg-oidc-validator-pgdg18/DEBIAN/control'
+        sudo dpkg-deb --build --root-owner-group pg-oidc-validator-pgdg18
+
+    - name: Test deb
+      run: |
+        sudo rm -rf /usr/share/postgresql/18/extension/pg_oidc_validator*
+        sudo rm -rf /usr/lib/postgresql/18/lib/pg_oidc_validator*
+        sudo dpkg -i --debug=7777 pg-oidc-validator-pgdg18.deb
+
+    - name: Upload deb
+      uses: actions/upload-artifact@v4
+      with:
+        name: pg-oidc-validator-deb
+        path: pg-oidc-validator-pgdg18.deb
+
+    - name: Create tgz
+      run: |
+        cd pg-oidc-validator-pgdg18 && sudo tar -czvf ../pg-oidc-validator-pgdg18.tar.gz .
+
+    - name: Publish release
+      uses: ncipollo/release-action@v1
+      # Only try and deploy on merged code
+      if: "github.repository == 'Percona-Lab/pg_oidc_validator' && github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'schedule')"
+      with:
+        artifacts: "pg-oidc-validator-pgdg18.tar.gz,pg-oidc-validator-pgdg18.deb"
+        omitBody: true
+        allowUpdates: true
+        generateReleaseNotes: true
+        makeLatest: true
+        tag: "latest"
+        name: "HEAD"
+        replacesArtifacts: true

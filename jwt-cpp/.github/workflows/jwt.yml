@@ -1,0 +1,95 @@
+name: JWT CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/get-cmake@latest
+      - uses: ./.github/actions/install/gtest
+      - uses: ./.github/actions/install/danielaparker-jsoncons
+      - uses: ./.github/actions/install/boost-json
+      - uses: ./.github/actions/install/open-source-parsers-jsoncpp
+
+      - name: configure
+        run: cmake --preset coverage
+      - name: run
+        run: cmake --build --preset coverage
+
+      - uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/coverage.info
+          format: lcov
+
+  fuzzing:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: lukka/get-cmake@latest
+      
+    - name: configure
+      run: cmake --preset ci-fuzzing
+    - name: build
+      run: cmake --build --preset ci-fuzzing
+        
+    - name: run
+      run: |
+        cmake --build --preset ci-fuzzing --target jwt-cpp-fuzz-BaseEncodeFuzz-run
+        cmake --build --preset ci-fuzzing --target jwt-cpp-fuzz-BaseDecodeFuzz-run
+        cmake --build --preset ci-fuzzing --target jwt-cpp-fuzz-TokenDecodeFuzz-run
+
+  asan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        openssl:
+          - { tag: "openssl-3.0.5", name: "3.0.5" }
+          - { tag: "OpenSSL_1_1_1q", name: "1.1.1q" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/get-cmake@latest
+      - uses: ./.github/actions/install/gtest
+      - uses: ./.github/actions/install/openssl
+        with:
+          version: ${{ matrix.openssl.tag }}
+
+      - name: configure
+        run: cmake --preset ci-asan
+      - name: build
+        run: cmake --build --preset ci-asan
+
+      - name: run
+        run: |
+          cmake --build --preset ci-asan --target private-claims-run
+          cmake --build --preset ci-asan --target rsa-create-run
+          cmake --build --preset ci-asan --target rsa-verify-run
+          cmake --build --preset ci-asan --target jwks-verify-run
+          cmake --build --preset ci-asan --target jwt-cpp-test-run
+
+  ubsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/get-cmake@latest
+      - uses: ./.github/actions/install/gtest
+
+      - name: configure
+        run: cmake --preset ci-ubsan
+      - name: build
+        run: cmake --build --preset ci-ubsan -DCMAKE_CXX_STANDARD=20
+
+      - name: run
+        run: |
+          cmake --build --preset ci-ubsan --target private-claims-run
+          cmake --build --preset ci-ubsan --target rsa-create-run
+          cmake --build --preset ci-ubsan --target rsa-verify-run
+          cmake --build --preset ci-ubsan --target jwks-verify-run
+          cmake --build --preset ci-ubsan --target jwt-cpp-test-run
