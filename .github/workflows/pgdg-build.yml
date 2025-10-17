@@ -52,8 +52,6 @@ jobs:
       run: |
         sudo mkdir pg-oidc-validator-pgdg18
         sudo mkdir -p pg-oidc-validator-pgdg18/usr/lib/postgresql/18/lib/
-        sudo mkdir -p pg-oidc-validator-pgdg18/share/postgresql/18/extension/
-        sudo cp /usr/share/postgresql/18/extension/pg_oidc_validator* pg-oidc-validator-pgdg18/share/postgresql/18/extension/
         sudo cp /usr/lib/postgresql/18/lib/pg_oidc_validator* pg-oidc-validator-pgdg18/usr/lib/postgresql/18/lib/
 
     - name: Upload tgz
@@ -74,7 +72,6 @@ jobs:
 
     - name: Test deb
       run: |
-        sudo rm -rf /usr/share/postgresql/18/extension/pg_oidc_validator*
         sudo rm -rf /usr/lib/postgresql/18/lib/pg_oidc_validator*
         sudo dpkg -i --debug=7777 pg-oidc-validator-pgdg18.deb
 
