@@ -1,5 +1,4 @@
 MODULE_big = pg_oidc_validator
-EXTENSION = pg_oidc_validator
 PGFILEDESC = "pg_oidc_validator - OAuth token validation for PostgreSQL"
 
 OBJS = \
