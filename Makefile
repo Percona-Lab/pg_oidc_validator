@@ -1,14 +1,11 @@
-# contrib/pg_oidc_validator/Makefile
+MODULE_big = pg_oidc_validator
+EXTENSION = pg_oidc_validator
+PGFILEDESC = "pg_oidc_validator - OAuth token validation for PostgreSQL"
 
 OBJS = \
 	src/pg_oidc_validator.o \
 	src/http_client.o \
 	src/jwk.o
-
-MODULE_big = pg_oidc_validator
-
-EXTENSION = pg_oidc_validator
-PGFILEDESC = "pg_oidc_validator - OAuth token validation for PostgreSQL"
 
 PG_CPPFLAGS = -Ijwt-cpp/include -std=c++23
 
@@ -25,7 +22,7 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-override SHLIB_LINK += -lcurl
+SHLIB_LINK += -lcurl
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(PG_CPPFLAGS) -c -o $@ $<
