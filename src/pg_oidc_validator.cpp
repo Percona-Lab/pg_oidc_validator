@@ -1,4 +1,3 @@
-
 #include <jwt-cpp/jwt.h>
 
 #include <ranges>
@@ -8,7 +7,6 @@
 #include "jwk.hpp"
 
 extern "C" {
-
 #include "postgres.h"
 //
 #include "fmgr.h"
@@ -44,7 +42,7 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
 
   auto required_scopes_range = std::string(MyProcPort->hba->oauth_scope) | std::views::split(' ') |
                                std::views::transform([](auto r) { return std::string(r.data(), r.size()); });
-  ;
+
   const scopes_t required_scopes(required_scopes_range.begin(), required_scopes_range.end());
   const std::string issuer = MyProcPort->hba->oauth_issuer;
 
@@ -99,7 +97,6 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   }
 
   return true;
-
 } catch (const std::exception& ex) {
   elog(WARNING, "OAuth validation failed with exception: %s", ex.what());
   return false;
