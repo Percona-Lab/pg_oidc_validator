@@ -33,7 +33,7 @@ static char* authn_field = nullptr;
 extern "C" void _PG_init() {
   DefineCustomStringVariable("pg_oidc_validator.authn_field",
                              gettext_noop("OAuth field used for matching PostgreSQL users"), nullptr, &authn_field,
-                             "sub", PGC_POSTMASTER, 0, nullptr, nullptr, nullptr);
+                             "sub", PGC_SIGHUP, 0, nullptr, nullptr, nullptr);
 }
 
 bool validate_token(const ValidatorModuleState* state, const char* token, const char* role,
