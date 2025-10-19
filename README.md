@@ -1,47 +1,75 @@
-# pg\_oidc\_validator
+# pg\_oidc\_validator 0.1.0
 
-Experimental OAuth validator library for PostgreSQL 18
+OAuth validator library for PostgreSQL 18
 
-This library should support any providers that implement OIDC and provide a valid JWT as an access token.
+> **__NOTE__:** This library is still experimental and not intended for production use.
 
-## Usage
+This library should support most providers that implement OIDC and provide a valid JWT as an access token.
 
-To configure this validator for a PostgreSQL instance:
+## Getting started
 
-1. build it with the required postgres version
-  ```
-  export USE_PGXS=1
-  export PG_CONFIG=/usr/local/pgsql/bin/pg_config
-  make -j
-  ```
+Binaries for Ubuntu 24.04 are available [here](https://github.com/Percona-Lab/pg_oidc_validator/releases/tag/latest).
 
-  > **__NOTE__:** the build requires a C++23 compiler and standard library.
-  > An easy setup available anywhere is a modern version of Clang with LibC++
-2. Configure `postgresql.conf`:
+To build and install from sources, use `make USE_PGXS=1 install -j`.
+
+  > **__NOTE__:** A a C++23 compiler and standard library is required to build pg_oidc_validator.
+
+## Configuration
+
+1. Enable the validator in `postgresql.conf`:
   ```
   oauth_validator_libraries=pg_oidc_validator
   ```
-3. Configure `pg_hba.conf`, for example:
+2. Add entries to `pg_hba.conf` that enables OAuth authentication.
+  Example:
   ```
-  host    all             all             127.0.0.1/32            oauth	scope="openid testScope",issuer=https://url.to.the.oidc.issuer,map=pgident-map-name-if-needed
+  host    all             all             127.0.0.1/32            oauth	scope="openid testScope",issuer=https://url.to.the.oidc.issuer
   ```
-4. If using a map file (most providers return email addresses as identity), add the required entries into `pg_ident.conf`
-5. Restart the server
+3. Restart the server
+```
+pg_ctl -D <datadir> restart
+```
 
-To connect to the server with OIDC/psql:
+## Usage
+
+Use a connection string with OAuth to connect to the server. Currently only `libpq` clients will support OAuth.
+
+Example with `psql`:
 
 ```
-bin/psql -h 127.0.0.1 'dbname=name oauth_issuer=https://url.to.the.oidc.issuer oauth_client_id=... oauth_client_secret=...'
+psql 'host=127.0.0.1 dbname=name oauth_issuer=https://url.to.the.oidc.issuer oauth_client_id=client-id-registered-in-provider oauth_client_secret=optional-client-secret'
 ```
-  > **__NOTE__:** `oauth_client_secret` is optional, it is only required if the provider is configured to require it.
 
-Registering the client ID and retrieving the secret is outside of the scope of this readme, as that's specific to the choosen OAuth provider.
+  > **__NOTE__:** `oauth_client_secret` is only necessary if the provider is configured to require one.
 
+The `oauth_client_id` is whatever you have registered your postgres instance as in your OIDC provider.
 
-## Special notes
+## Setting up your OIDC provider
+
+### Keycloak
+Keycloak is easy to run locally using docker for trying things out.
+
+Remember to enable the OAuth 2 device flow for the client you configure in keycloak, since that's the only OAuth flow libpq supports. You don't need to add any URLs in the keycloak configuration as they are not used.
+
+The below example is for a client with id "postgres" and an included scope called "database" being allowed to login with the PostgreSQL access role `rolename`.
+
+Example HBA entry:
+```
+host	all	rolename	127.0.0.1/32	oauth	scope="database",issuer=http://127.0.0.1:8080/realms/master
+```
+
+Connection example:
+```
+psql 'host=127.0.0.1 dbname=name user=rolename oauth_issuer=http://127.0.0.1:8080/realms/master oauth_client_id=database'
+```
 
 ### Microsoft / Entra ID
-
 * `oauth_issuer` for postgres should be `https://login.microsoftonline.com/<tenant_id>/v2.0`
 * It generates different JWTs for providers without custom scopes and with custom scopes.
-  The library can only validate JWTs with custom scopes, even that requires a custom login internally.
+  The library can only validate JWTs with custom scopes, only use the short name without URI schema and UUID in the `scope` parameter in `pg_hba.conf`
+
+## Google OIDC
+Google has some quirks which are currently not supported by the core PostgreSQL oauth code. So for now this extension can unfortunately not support it.
+
+### Other providers
+Hopefully the information above will give you everything you need to configure _your_ OIDC provider correctly. If you do, [please let us know](https://forums.percona.com/c/postgresql/) how it went!
