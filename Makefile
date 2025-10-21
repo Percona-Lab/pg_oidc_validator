@@ -21,7 +21,7 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-SHLIB_LINK += -lcurl
+SHLIB_LINK += -lcurl -static-libstdc++
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(PG_CPPFLAGS) -c -o $@ $<
