@@ -197,7 +197,7 @@ scopes_t parse_jwt_scopes(const picojson::value& jsonScopes) {
     return {jsonScopes.get<std::string>()};
   }
 
-  throw std::runtime_error("JWT 'scp' claim is neither an array nor a string");
+  return {};
 }
 
 bool azure_scopes_match(const scopes_t& required_scopes, const scopes_t& received_scopes) {
