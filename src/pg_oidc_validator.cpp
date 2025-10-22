@@ -55,6 +55,12 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   }
 
   const auto& issuer_object = issuer_info.get<picojson::object>();
+
+  if (!issuer_object.contains("jwks_uri")) {
+    elog(WARNING, "jwks_uri not present in issuer info. Is this an OIDC provider?");
+    return false;
+  }
+
   const auto jwks_uri = issuer_object.at("jwks_uri").to_str();
 
   if (jwks_uri.empty()) {
@@ -79,6 +85,13 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
 
   PG_TRY();
   {
+    if (!payload.contains(authn_field)) {
+      const auto available_claims = payload | std::views::keys | std::views::join_with(std::string(", "));
+      const std::string claims_str(available_claims.begin(), available_claims.end());
+      elog(WARNING, "OAuth failed: claim '%s' (authn_field) is missing. Available claims: %s", authn_field,
+           claims_str.c_str());
+      return false;
+    }
     res->authn_id = pstrdup(payload.at(authn_field).to_str().c_str());
   }
   PG_CATCH();
