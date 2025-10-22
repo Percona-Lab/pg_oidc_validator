@@ -30,6 +30,17 @@ To build and install from sources, use `make USE_PGXS=1 install -j`.
 pg_ctl -D <datadir> restart
 ```
 
+## GUC variables
+
+### pg_oidc_validator.authn_field
+
+This GUC variable controls which field of the provided JWT token is used for identity mapping. 
+By default this is the `sub` claim, as most providers allow the configuration of this claim to provide different user fields.
+
+In some cases however the `sub` claim is fixed to a randomly generated, application specific identifier which is non known before a user first connects to the application.
+This is not practical for mapping provider users to PostgreSQL users in a map file.
+Selecting a different `authn_field`, such as `email` allows an easy to use persistent mapping in this case.
+
 ## Usage
 
 Use a connection string with OAuth to connect to the server. Currently only `libpq` clients will support OAuth.
