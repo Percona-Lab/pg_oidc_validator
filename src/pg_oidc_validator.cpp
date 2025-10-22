@@ -67,8 +67,14 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   const std::string jwt_kid = decoded_token.get_header_claim("kid").as_string();
   const auto verifier = configure_verifier_with_jwks(issuer, jwks_info, jwt_kid);
   verifier.verify(decoded_token);
-  const auto json_scopes = decoded_token.get_payload_json()["scp"];
-  const scopes_t received_scopes = parse_jwt_scopes(json_scopes);
+  auto received_scopes = parse_jwt_scopes(decoded_token.get_payload_json()["scp"]);
+  const auto json_scope = parse_jwt_scopes(decoded_token.get_payload_json()["scope"]);
+  received_scopes.insert(json_scope.begin(), json_scope.end());
+
+  if (received_scopes.empty()) {
+    elog(WARNING, "Access token contains no scopes");
+  }
+
   const auto payload = decoded_token.get_payload_json();
 
   PG_TRY();
