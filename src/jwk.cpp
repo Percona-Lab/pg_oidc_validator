@@ -112,6 +112,13 @@ void configure_hmac_key(const picojson::object& keyObject, const std::string& ki
   }
 }
 
+std::string get_required_parameter(picojson::object const& key_object, std::string const& name) {
+  if (!key_object.contains(name)) {
+    throw std::runtime_error(std::format("Required parameter '{}' is missing", name));
+  }
+  return key_object.at(name).to_str();
+}
+
 jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const picojson::value& jwksInfo,
                                           const std::string& required_kid) {
   std::string expected_issuer = issuer;
@@ -141,21 +148,21 @@ jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const picoj
 
     const auto& key_object = key_value.get<picojson::object>();
 
-    const std::string use = key_object.at("use").to_str();
+    const std::string use = get_required_parameter(key_object, "use");
 
     if (use != "sig") {
       continue;
     }
 
-    const std::string kid = key_object.at("kid").to_str();
+    const std::string kid = get_required_parameter(key_object, "kid");
 
     if (kid != required_kid) {
       // Skip keys that don't match the required key ID
       continue;
     }
 
-    const std::string kty = key_object.at("kty").to_str();
-    const std::string alg = key_object.at("alg").to_str();
+    const std::string kty = get_required_parameter(key_object, "kty");
+    const std::string alg = key_object.contains("alg") ? key_object.at("alg").to_str() : "";
 
     if (kty == "RSA") {
       configure_rsa_key(key_object, kid, alg, verifier);
