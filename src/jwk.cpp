@@ -201,7 +201,9 @@ scopes_t parse_jwt_scopes(const picojson::value& jsonScopes) {
     return {scope_range.begin(), scope_range.end()};
   }
   if (jsonScopes.is<std::string>()) {
-    return {jsonScopes.get<std::string>()};
+    auto scope_range = jsonScopes.get<std::string>() | std::views::split(' ') |
+                       std::views::transform([](auto r) { return std::string(r.data(), r.size()); });
+    return {scope_range.begin(), scope_range.end()};
   }
 
   return {};
