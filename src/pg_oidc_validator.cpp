@@ -9,6 +9,9 @@
 #include "http_client.hpp"
 #include "jwk.hpp"
 
+static const char* ModuleName = "pg_oidc_validator";
+static const char* ModuleVersion = "1.0.0";
+
 extern "C" {
 #include "postgres.h"
 //
@@ -18,13 +21,15 @@ extern "C" {
 #include "miscadmin.h"
 #include "utils/guc.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(.name = ModuleName, .version = ModuleVersion);
 }
 
+void validator_shutdown(ValidatorModuleState*);
 bool validate_token(const ValidatorModuleState* state, const char* token, const char* role,
                     ValidatorModuleResult* result);
 
-static const OAuthValidatorCallbacks validator_callbacks = {PG_OAUTH_VALIDATOR_MAGIC, nullptr, nullptr, validate_token};
+static const OAuthValidatorCallbacks validator_callbacks = {PG_OAUTH_VALIDATOR_MAGIC, nullptr, validator_shutdown,
+                                                            validate_token};
 
 extern "C" {
 const OAuthValidatorCallbacks* _PG_oauth_validator_module_init(void) { return &validator_callbacks; }
@@ -167,4 +172,9 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
 } catch (...) {
   elog(WARNING, "OAuth validation failed with unknown internal error");
   return false;
+}
+
+void validator_shutdown(ValidatorModuleState*) {
+  // Detach cache manually, otherwise the destructor will try to do it after shmem_exit already completed
+  pg::http_cache::get_instance().detach();
 }
