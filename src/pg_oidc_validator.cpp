@@ -10,7 +10,7 @@
 #include "jwk.hpp"
 
 static const char* ModuleName = "pg_oidc_validator";
-static const char* ModuleVersion = "1.0.0";
+static const char* ModuleVersion = "1.1.0";
 
 extern "C" {
 #include "postgres.h"
