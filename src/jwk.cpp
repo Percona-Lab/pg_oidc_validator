@@ -121,8 +121,8 @@ std::string get_required_parameter(picojson::object const& key_object, std::stri
   return key_object.at(name).to_str();
 }
 
-jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const picojson::value& jwksInfo,
-                                          const std::string& required_kid) {
+jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const std::string& audience,
+                                          const picojson::value& jwksInfo, const std::string& required_kid) {
   std::string expected_issuer = issuer;
 
   if (issuer_is_azure(issuer)) {
@@ -135,6 +135,14 @@ jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const picoj
   }
 
   auto verifier = jwt::verify().with_issuer(expected_issuer);
+
+  if (!audience.empty()) {
+    verifier = verifier.with_audience(audience);
+  } else {
+    elog(LOG,
+         "pg_oidc_validator.audience is not set; the JWT `aud` claim is not validated, so an access token the issuer "
+         "minted for another service is accepted");
+  }
 
   if (!jwksInfo.is<picojson::object>()) {
     throw std::runtime_error("JWKS info is not a JSON object");

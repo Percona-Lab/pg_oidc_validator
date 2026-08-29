@@ -40,6 +40,9 @@ static char* authn_field = nullptr;
 // When non-empty, the validator uses this URL (instead of pg_hba's `issuer=`)
 static char* discovery_url_override = nullptr;
 
+// When non-empty, the JWT `aud` claim has to contain this value
+static char* audience = nullptr;
+
 extern "C" void _PG_init() {
   DefineCustomStringVariable("pg_oidc_validator.authn_field",
                              gettext_noop("OAuth field used for matching PostgreSQL users"), nullptr, &authn_field,
@@ -49,6 +52,11 @@ extern "C" void _PG_init() {
       gettext_noop("If set, fetch OIDC discovery and JWKS from this URL instead of the pg_hba issuer."),
       gettext_noop("The JWT `iss` claim is still validated against the pg_hba issuer."), &discovery_url_override, "",
       PGC_SIGHUP, 0, nullptr, nullptr, nullptr);
+  DefineCustomStringVariable(
+      "pg_oidc_validator.audience", gettext_noop("If set, the JWT `aud` claim has to contain this value."),
+      gettext_noop("If left empty, the `aud` claim is not validated, and an access token the issuer minted for "
+                   "another service is accepted as a login."),
+      &audience, "", PGC_SIGHUP, 0, nullptr, nullptr, nullptr);
 }
 
 bool validate_token(const ValidatorModuleState* state, const char* token, const char* role,
@@ -69,6 +77,7 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   const std::string issuer = MyProcPort->hba->oauth_issuer;
   const std::string discovery_url =
       (discovery_url_override != nullptr && *discovery_url_override != '\0') ? discovery_url_override : issuer;
+  const std::string expected_audience = (audience != nullptr) ? audience : "";
 
   http_client http;
   const auto issuer_info = http.get_json(issuer_info_url(discovery_url));
@@ -95,7 +104,7 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   const auto jwks_info = http.get_json(jwks_uri);
   const auto decoded_token = jwt::decode(token);
   const std::string jwt_kid = decoded_token.get_header_claim("kid").as_string();
-  const auto verifier = configure_verifier_with_jwks(issuer, jwks_info, jwt_kid);
+  const auto verifier = configure_verifier_with_jwks(issuer, expected_audience, jwks_info, jwt_kid);
   verifier.verify(decoded_token);
   auto received_scopes = parse_jwt_scopes(decoded_token.get_payload_json()["scp"]);
   const auto json_scope = parse_jwt_scopes(decoded_token.get_payload_json()["scope"]);

@@ -14,8 +14,8 @@ using scopes_t = std::set<std::string>;
 
 using jwt_verifier = jwt::verifier<jwt::default_clock, jwt::traits::kazuho_picojson>;
 
-jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const picojson::value& jwksInfo,
-                                          const std::string& required_kid);
+jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const std::string& audience,
+                                          const picojson::value& jwksInfo, const std::string& required_kid);
 
 std::string issuer_info_url(std::string const& issuer_url);
 

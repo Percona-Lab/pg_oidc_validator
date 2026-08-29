@@ -56,6 +56,21 @@ It is mainly intended for testing, but can be also used in environment where the
 
 Setting this variable doesn't change the issuer used during JWT validation.
 
+### pg_oidc_validator.audience
+
+This variable controls the expected value of the `aud` claim of the provided JWT token.
+
+The `aud` claim names the service a token was minted for.
+An issuer typically serves several services, so without this check any token from the configured issuer is accepted,
+including one a user obtained for an unrelated service.
+Setting this variable to the identifier the provider uses for PostgreSQL (with most providers, the client id)
+restricts logins to tokens actually intended for this server.
+
+The claim may be a single string or a list of strings; the configured value has to be present in either case.
+
+By default this variable is empty, which keeps the `aud` claim unvalidated.
+The validator writes a message to the server log on every authentication while that is the case.
+
 ## Usage
 
 Use a connection string with OAuth to connect to the server.
