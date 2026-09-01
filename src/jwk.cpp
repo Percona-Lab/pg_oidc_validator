@@ -33,6 +33,41 @@ std::string convert_azure_issuer_to_jwt_format(const std::string& config_issuer)
   return config_issuer;
 }
 
+// jwt-cpp's with_audience() requires the token to carry *every* configured audience, and rejects a string `aud`
+// outright as soon as more than one is configured. A list of accepted audiences needs the opposite: the token has
+// to name any one of them.
+struct audience_is_accepted {
+  audiences_t accepted;
+
+  void operator()(const jwt::verify_ops::verify_context<jwt::traits::kazuho_picojson>& ctx, std::error_code& ec) const {
+    const auto claim = ctx.get_claim(false, ec);
+
+    if (ec) {
+      return;
+    }
+
+    if (claim.get_type() == jwt::json::type::string) {
+      if (!accepted.contains(claim.as_string())) {
+        ec = jwt::error::token_verification_error::audience_missmatch;
+      }
+      return;
+    }
+
+    if (claim.get_type() != jwt::json::type::array) {
+      ec = jwt::error::token_verification_error::claim_type_missmatch;
+      return;
+    }
+
+    for (const auto& value : claim.as_array()) {
+      if (value.is<std::string>() && accepted.contains(value.get<std::string>())) {
+        return;
+      }
+    }
+
+    ec = jwt::error::token_verification_error::audience_missmatch;
+  }
+};
+
 }  // namespace
 
 void configure_rsa_key(const picojson::object& keyObject, const std::string& kid, const std::string& alg,
@@ -121,7 +156,7 @@ std::string get_required_parameter(picojson::object const& key_object, std::stri
   return key_object.at(name).to_str();
 }
 
-jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const std::string& audience,
+jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const audiences_t& accepted_audiences,
                                           const picojson::value& jwksInfo, const std::string& required_kid) {
   std::string expected_issuer = issuer;
 
@@ -136,8 +171,8 @@ jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const std::
 
   auto verifier = jwt::verify().with_issuer(expected_issuer);
 
-  if (!audience.empty()) {
-    verifier = verifier.with_audience(audience);
+  if (!accepted_audiences.empty()) {
+    verifier = verifier.with_claim("aud", audience_is_accepted{accepted_audiences});
   } else {
     elog(LOG,
          "pg_oidc_validator.audience is not set; the JWT `aud` claim is not validated, so an access token the issuer "

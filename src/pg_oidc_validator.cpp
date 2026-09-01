@@ -19,7 +19,9 @@ extern "C" {
 #include "libpq/libpq-be.h"
 #include "libpq/oauth.h"
 #include "miscadmin.h"
+#include "nodes/pg_list.h"
 #include "utils/guc.h"
+#include "utils/varlena.h"
 
 PG_MODULE_MAGIC_EXT(.name = ModuleName, .version = ModuleVersion);
 }
@@ -40,8 +42,56 @@ static char* authn_field = nullptr;
 // When non-empty, the validator uses this URL (instead of pg_hba's `issuer=`)
 static char* discovery_url_override = nullptr;
 
-// When non-empty, the JWT `aud` claim has to contain this value
+// When non-empty, a comma separated list of audiences; the JWT `aud` claim has to name one of them
 static char* audience = nullptr;
+
+// Splits the audience GUC into its elements. Returns nullptr on success, otherwise a message describing why the
+// value is not a valid list.
+static const char* split_audience_list(const char* value, audiences_t& audiences) {
+  if (value == nullptr || *value == '\0') {
+    return nullptr;
+  }
+
+  // SplitGUCList() carves the list up in place and returns pointers into rawstring, so it has to stay alive until
+  // the elements have been copied out.
+  char* rawstring = pstrdup(value);
+  List* elements = NIL;
+  const char* error = nullptr;
+
+  if (SplitGUCList(rawstring, ',', &elements)) {
+    const int count = list_length(elements);
+
+    for (int i = 0; i < count; i++) {
+      const auto* element = static_cast<const char*>(list_nth(elements, i));
+
+      if (*element == '\0') {
+        error = "audience must not be empty";
+        break;
+      }
+
+      audiences.insert(element);
+    }
+  } else {
+    error = "list syntax is invalid";
+  }
+
+  list_free(elements);
+  pfree(rawstring);
+
+  return error;
+}
+
+static bool check_audience(char** newval, void**, GucSource) {
+  audiences_t audiences;
+  const char* error = split_audience_list(*newval, audiences);
+
+  if (error != nullptr) {
+    GUC_check_errdetail("%s", error);
+    return false;
+  }
+
+  return true;
+}
 
 extern "C" void _PG_init() {
   DefineCustomStringVariable("pg_oidc_validator.authn_field",
@@ -53,10 +103,11 @@ extern "C" void _PG_init() {
       gettext_noop("The JWT `iss` claim is still validated against the pg_hba issuer."), &discovery_url_override, "",
       PGC_SIGHUP, 0, nullptr, nullptr, nullptr);
   DefineCustomStringVariable(
-      "pg_oidc_validator.audience", gettext_noop("If set, the JWT `aud` claim has to contain this value."),
-      gettext_noop("If left empty, the `aud` claim is not validated, and an access token the issuer minted for "
-                   "another service is accepted as a login."),
-      &audience, "", PGC_SIGHUP, 0, nullptr, nullptr, nullptr);
+      "pg_oidc_validator.audience", gettext_noop("Comma separated list of audiences accepted in the JWT `aud` claim."),
+      gettext_noop("A token is accepted if its `aud` claim names any of the listed audiences. If left empty, the "
+                   "`aud` claim is not validated, and an access token the issuer minted for another service is "
+                   "accepted as a login."),
+      &audience, "", PGC_SIGHUP, GUC_LIST_INPUT | GUC_LIST_QUOTE, check_audience, nullptr, nullptr);
 }
 
 bool validate_token(const ValidatorModuleState* state, const char* token, const char* role,
@@ -77,7 +128,15 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   const std::string issuer = MyProcPort->hba->oauth_issuer;
   const std::string discovery_url =
       (discovery_url_override != nullptr && *discovery_url_override != '\0') ? discovery_url_override : issuer;
-  const std::string expected_audience = (audience != nullptr) ? audience : "";
+  audiences_t accepted_audiences;
+  const char* audience_error = pg::pg_try([&]() { return split_audience_list(audience, accepted_audiences); });
+
+  if (audience_error != nullptr) {
+    // check_audience() rejects such a value when it is set, so this only catches one that slipped through. Refuse
+    // the login rather than silently dropping the audience check.
+    elog(WARNING, "OAuth failed: pg_oidc_validator.audience is invalid: %s", audience_error);
+    return false;
+  }
 
   http_client http;
   const auto issuer_info = http.get_json(issuer_info_url(discovery_url));
@@ -104,7 +163,7 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   const auto jwks_info = http.get_json(jwks_uri);
   const auto decoded_token = jwt::decode(token);
   const std::string jwt_kid = decoded_token.get_header_claim("kid").as_string();
-  const auto verifier = configure_verifier_with_jwks(issuer, expected_audience, jwks_info, jwt_kid);
+  const auto verifier = configure_verifier_with_jwks(issuer, accepted_audiences, jwks_info, jwt_kid);
   verifier.verify(decoded_token);
   auto received_scopes = parse_jwt_scopes(decoded_token.get_payload_json()["scp"]);
   const auto json_scope = parse_jwt_scopes(decoded_token.get_payload_json()["scope"]);
