@@ -80,6 +80,11 @@ The claim itself may be either a string or an array of strings, and both are mat
 By default this variable is empty, which keeps the `aud` claim unvalidated.
 The validator writes a message to the server log on every authentication while that is the case.
 
+A value that is not a well formed list is reported as a `WARNING` when it is loaded, and refuses every OAuth login
+until it is corrected, naming the reason in the server log each time.
+It deliberately does not fall back to leaving the `aud` claim unvalidated,
+which would turn a typo into a silently disabled check.
+
 ## Usage
 
 Use a connection string with OAuth to connect to the server.

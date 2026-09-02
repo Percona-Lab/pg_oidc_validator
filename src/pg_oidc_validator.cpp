@@ -45,9 +45,9 @@ static char* discovery_url_override = nullptr;
 // When non-empty, a comma separated list of audiences; the JWT `aud` claim has to name one of them
 static char* audience = nullptr;
 
-// Splits the audience GUC into its elements. Returns nullptr on success, otherwise a message describing why the
-// value is not a valid list.
-static const char* split_audience_list(const char* value, audiences_t& audiences) {
+// Splits the audience GUC into its elements, or, when `audiences` is null, only checks that the value is a well
+// formed list. Returns nullptr on success, otherwise a message describing why it is not.
+static const char* split_audience_list(const char* value, audiences_t* audiences) {
   if (value == nullptr || *value == '\0') {
     return nullptr;
   }
@@ -69,7 +69,9 @@ static const char* split_audience_list(const char* value, audiences_t& audiences
         break;
       }
 
-      audiences.insert(element);
+      if (audiences != nullptr) {
+        audiences->insert(element);
+      }
     }
   } else {
     error = "list syntax is invalid";
@@ -81,13 +83,16 @@ static const char* split_audience_list(const char* value, audiences_t& audiences
   return error;
 }
 
+// Reports a malformed list as soon as it is configured, but deliberately accepts it. Returning false would leave
+// the GUC at its previous value --- its empty default, at postmaster startup, where core downgrades a rejected
+// value to a WARNING and carries on --- and an empty audience means "do not validate `aud`", so a typo would
+// silently switch the check off. The value has to reach validate_token(), which refuses the login instead.
 static bool check_audience(char** newval, void**, GucSource) {
-  audiences_t audiences;
-  const char* error = split_audience_list(*newval, audiences);
+  const char* error = split_audience_list(*newval, nullptr);
 
   if (error != nullptr) {
-    GUC_check_errdetail("%s", error);
-    return false;
+    ereport(WARNING, (errmsg("invalid value for parameter \"pg_oidc_validator.audience\": \"%s\"", *newval),
+                      errdetail("%s", error), errhint("OAuth logins are refused until this is corrected.")));
   }
 
   return true;
@@ -132,11 +137,11 @@ bool validate_token(const ValidatorModuleState* state, const char* token, const 
   const std::string discovery_url =
       (discovery_url_override != nullptr && *discovery_url_override != '\0') ? discovery_url_override : issuer;
   audiences_t accepted_audiences;
-  const char* audience_error = pg::pg_try([&]() { return split_audience_list(audience, accepted_audiences); });
+  const char* audience_error = pg::pg_try([&]() { return split_audience_list(audience, &accepted_audiences); });
 
   if (audience_error != nullptr) {
-    // check_audience() rejects such a value when it is set, so this only catches one that slipped through. Refuse
-    // the login rather than silently dropping the audience check.
+    // check_audience() only warns about a malformed value, so it reaches us intact. Refuse the login rather than
+    // fall back to no audience check at all.
     elog(WARNING, "OAuth failed: pg_oidc_validator.audience is invalid: %s", audience_error);
     return false;
   }
