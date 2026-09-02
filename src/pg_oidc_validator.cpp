@@ -107,7 +107,10 @@ extern "C" void _PG_init() {
       gettext_noop("A token is accepted if its `aud` claim names any of the listed audiences. If left empty, the "
                    "`aud` claim is not validated, and an access token the issuer minted for another service is "
                    "accepted as a login."),
-      &audience, "", PGC_SIGHUP, GUC_LIST_INPUT | GUC_LIST_QUOTE, check_audience, nullptr, nullptr);
+      // No GUC_LIST_QUOTE: init_custom_variable() rejects that flag with elog(FATAL) because pg_dump cannot
+      // re-quote a list belonging to an extension that is not loaded. SplitGUCList() honours double quoted
+      // elements regardless of the flag, so only re-quoting on output is lost.
+      &audience, "", PGC_SIGHUP, GUC_LIST_INPUT, check_audience, nullptr, nullptr);
 }
 
 bool validate_token(const ValidatorModuleState* state, const char* token, const char* role,
