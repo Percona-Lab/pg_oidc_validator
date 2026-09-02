@@ -193,9 +193,11 @@ jwt_verifier configure_verifier_with_jwks(const std::string& issuer, const audie
 
     const auto& key_object = key_value.get<picojson::object>();
 
-    const std::string use = get_required_parameter(key_object, "use");
+    // RFC 7517 4.2 makes `use` optional, and a key that omits it is not restricted to one purpose, so skip a
+    // key only when it says it is meant for something other than signatures.
+    const auto use_it = key_object.find("use");
 
-    if (use != "sig") {
+    if (use_it != key_object.end() && use_it->second.to_str() != "sig") {
       continue;
     }
 
